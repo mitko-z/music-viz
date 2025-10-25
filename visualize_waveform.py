@@ -1,11 +1,9 @@
 import librosa
-import numpy as np
-from moviepy import ImageSequenceClip, AudioFileClip
 
 import librosa
 import matplotlib.pyplot as plt
-import numpy as np
 import os
+import common_functions as cf
 
 # Load audio
 y, sr = librosa.load("Steffner, Allan Biggs - Toca Toca [Tech House].mp3", sr=None)
@@ -29,10 +27,9 @@ for i in range(0, len(y), samples_per_frame):
 
 print("✅ Waveform frames generated!")
 
-# Create video from frames and add audio
-audio = AudioFileClip("Steffner, Allan Biggs - Toca Toca [Tech House].mp3")
-clip = ImageSequenceClip("frames_waveform", fps=30)
-clip = clip.with_audio(audio)  # Add audio to the clip after creation
-clip.write_videofile("output_video.mp4", codec="libx264", audio_codec="aac")
-
-print("Video file 'output_video.mp4' created successfully.")
+cf.create_video(
+    music_file="Steffner, Allan Biggs - Toca Toca [Tech House].mp3",
+    frames_folder="frames_waveform",
+    output_file="output_video.mp4",
+    fps=fps
+)
