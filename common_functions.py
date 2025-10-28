@@ -2,6 +2,8 @@ import numpy as np
 from moviepy import ImageSequenceClip, AudioFileClip
 from scipy.interpolate import interp1d
 
+
+
 def create_video(music_file, frames_folder, output_file, fps=30):
     # Create video from frames and add audio
     audio = AudioFileClip(music_file)
