@@ -52,6 +52,13 @@ vignette_mask = np.clip(1 - radius**1.8, 0, 1)  # adjust exponent for strength
 vignette_mask = cv2.GaussianBlur(vignette_mask, (0, 0), sigmaX=120)
 vignette_mask = vignette_mask[..., None]  # make it 3D for RGB multiplication
 
+# Precompute onset strength or RMS
+onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+onset_env = librosa.util.normalize(onset_env)
+
+# Interpolate so that each visual frame corresponds to one audio frame
+onset_env_interp = np.interp(np.linspace(0, len(onset_env), S_db.shape[1]), np.arange(len(onset_env)), onset_env)
+
 for i in range(0, S_db.shape[1], 2):
     frame = np.zeros((height, width, 3), dtype=np.uint8)
 
@@ -65,6 +72,17 @@ for i in range(0, S_db.shape[1], 2):
         (background.shape[1], background.shape[0]),
         borderMode=cv2.BORDER_REFLECT,
     )
+    # --- Beat-based bounce effect ---
+    energy = onset_env_interp[i]
+    scale_factor = 1.0 + 0.1 * energy  # 0.1 = max +10% zoom
+    rot_mat = cv2.getRotationMatrix2D(bg_center, 0, scale_factor)
+    rotated = cv2.warpAffine(
+        background,
+        rot_mat,
+        (background.shape[1], background.shape[0]),
+        borderMode=cv2.BORDER_REFLECT
+    )
+
 
     # --- Center the background on the video frame ---
     y1 = frame_center[1] - background.shape[0] // 2
