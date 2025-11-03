@@ -3,17 +3,20 @@ import numpy as np
 import cv2
 import os
 import common_functions as cf
+import shutil
 
 data_folder = "data"
 
 # Load audio
-audio_file_name = "Steffner, Allan Biggs - Toca Toca [Tech House].mp3"
+audio_title = "DJ MK Crazy - Da Club Vol. 55 [Rap Club Remixes]"
+audio_file_name = audio_title + ".mp3"
 audio_file_name = os.path.join(data_folder, audio_file_name)
 y, sr = librosa.load(audio_file_name, sr=None)
 hop_length = 1024
 n_fft = 2048
 S = np.abs(librosa.stft(y, n_fft=n_fft, hop_length=hop_length))
 S_db = librosa.amplitude_to_db(S, ref=np.max)
+print(f"Audio loaded: {audio_file_name}, duration: {len(y)/sr:.2f} seconds")
 
 frames_folder = os.path.join(data_folder, "frames_circle_" + audio_file_name.split(".")[0])
 os.makedirs(frames_folder, exist_ok=True)
@@ -22,6 +25,11 @@ height, width = 720, 1280
 center = (width // 2, height // 2)
 base_radius = 200
 color = (255, 80, 255)  # pink-magenta
+
+# --- Downsample frames to save space (was hardcoded step 2 in loop) ---
+downsample = 2  # generate 1 frame every `downsample` STFT columns
+stft_fps = sr / hop_length
+fps_output = stft_fps / downsample  # use this fps when creating final video
 
 
 # === Load and prepare background  ===
@@ -59,7 +67,12 @@ onset_env = librosa.util.normalize(onset_env)
 # Interpolate so that each visual frame corresponds to one audio frame
 onset_env_interp = np.interp(np.linspace(0, len(onset_env), S_db.shape[1]), np.arange(len(onset_env)), onset_env)
 
-for i in range(0, S_db.shape[1], 2):
+tracklist = cf.load_tracklist(os.path.join(data_folder, "tracklist.txt"))
+print(f"Tracklist loaded: {tracklist}")
+
+total_frames = S_db.shape[1]
+# iterate and keep a sequential counter (frame_idx) so timing and progress work correctly
+for frame_idx, i in enumerate(range(0, total_frames, downsample)):
     frame = np.zeros((height, width, 3), dtype=np.uint8)
 
     # --- Background rotation (optional) ---
@@ -143,7 +156,58 @@ for i in range(0, S_db.shape[1], 2):
         if 0 <= cx < width and 0 <= cy < height:
             frame[cy, cx] = (80, 20, 80)
 
-    cv2.imwrite(f"{frames_folder}/frame_{i:06d}.png", frame)
+    # compute audio time for this STFT column
+    t_sec = i * hop_length / sr  # exact audio time of STFT column i
+
+    # --- Main mix title (top-left-ish) ---
+    title_parts = audio_title.split("-")
+    title_y = 100
+    for title_part in title_parts:
+        title_in = 5.0
+        title_hold = 15.0
+        title_x = cf.animated_position(t_sec, title_in, title_in + title_hold, duration=1.0, x_start=-1000, x_end=50)
+        title_y += 80
+        if title_x is not None:
+            cv2.putText(frame, title_part,
+                        (title_x, title_y),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        2.0, (255, 255, 255), 4, cv2.LINE_AA)
+
+    # --- Current track name (bottom left) ---
+    current_track = None
+    next_track = None
+    for j in range(len(tracklist)):
+        if j == len(tracklist) - 1 or (tracklist[j][1] <= t_sec < tracklist[j+1][1]):
+            current_track = tracklist[j]
+            next_track = tracklist[j+1] if j + 1 < len(tracklist) else None
+            break
+
+    if current_track is not None:
+        song_name, song_start = current_track
+        next_song_start_at = next_track[1] if next_track is not None else None
+        # calculate the lenght of the current song
+        current_song_length = next_song_start_at - song_start if next_song_start_at is not None else 10 * 60  # default to 10 minutes if last track
+        # Animate new track entering when it starts
+        song_x = cf.animated_position(
+            t_sec, 
+            song_start, 
+            song_start + current_song_length, 
+            duration=1.0, 
+            x_start=-600, 
+            x_end=100)
+        if song_x is not None:
+            cv2.putText(frame, song_name,
+                        (song_x, height - 50),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0, (255, 255, 255), 2, cv2.LINE_AA)
+
+    cv2.imwrite(f"{frames_folder}/frame_{frame_idx:06d}.png", frame)
+
+    # progress print: use total output frames
+    total_output_frames = (total_frames + downsample - 1) // downsample
+    if frame_idx % max(1, (total_output_frames // 100)) == 0:
+        percent = int((frame_idx / total_output_frames) * 100)
+        print(f"\rFrames generation in progress: {percent}%", end="", flush=True)
 
 print("✅ Circular visualizer frames generated!")
 
@@ -152,5 +216,10 @@ cf.create_video(
     music_file=audio_file_name,
     frames_folder=frames_folder,
     output_file=audio_file_name.split(".")[0] + "_radial_bars_video.mp4",
-    fps=30
+    fps=fps_output
 )
+
+print("Deleting frames folder to save space...")
+shutil.rmtree(frames_folder)
+
+print("All done!")

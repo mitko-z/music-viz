@@ -52,3 +52,39 @@ def normalize_and_smooth(values):
     values = np.maximum(values, 20)
 
     return values
+
+def load_tracklist(file_path):
+    tracklist = []
+    with open(file_path, "r") as f:
+        for line in f:
+            if "\t" not in line:
+                continue
+            title, time_str = line.strip().split("\t")
+            h, m, s = (["0"] * (3 - len(time_str.split(":"))) + time_str.split(":"))
+            total_seconds = int(h) * 3600 + int(m) * 60 + int(s)
+            tracklist.append((title, total_seconds))
+    return tracklist
+
+def animated_position(t, t_in, t_out, duration=1.0, x_start=-600, x_end=200):
+    """
+    Returns current x offset for a fly-in/fly-out animation.
+    t = current time (s)
+    t_in = animation start time (s)
+    t_out = animation exit start (s)
+    duration = duration of fly-in and fly-out (s)
+    """
+    if t < t_in:
+        return None  # not started
+    elif t_in <= t < t_in + duration:
+        # fly in
+        progress = (t - t_in) / duration
+        return int(x_start + (x_end - x_start) * (0.5 - 0.5 * np.cos(np.pi * progress)))
+    elif t_in + duration <= t < t_out:
+        # hold position
+        return int(x_end)
+    elif t_out <= t < t_out + duration:
+        # fly out
+        progress = (t - t_out) / duration
+        return int(x_end + (1920 - x_end) * (0.5 - 0.5 * np.cos(np.pi * progress)))
+    else:
+        return None
